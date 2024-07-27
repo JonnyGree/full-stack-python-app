@@ -1,0 +1,5 @@
+# nasdaq useful info
+ftp://ftp.nasdaqtrader.com/symboldirectory/
+
+# run the webserver
+python -m uvicorn main:app --reload
