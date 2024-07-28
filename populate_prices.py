@@ -3,52 +3,78 @@ import os
 import sqlite3
 import alpaca_trade_api as tradeapi
 import pandas as pd
-from datetime import datetime
+from datetime import date, datetime
+from dateutil.relativedelta import relativedelta
 import time
+import sys
+
+# ----> Input correct year <------
+year=2020
+print("year: ", year)
+start_date = datetime(year, 1, 1)
+if year == datetime.today().year:
+    end_date = datetime.today()
+else:
+    end_date = datetime(year, 12, 31)
 
 # Load environment variables from the .env file
 load_dotenv()
 
 connection = sqlite3.connect('app.db')
-
-# Set row factory to sqlite3.Row to access columns by name
 connection.row_factory = sqlite3.Row
 cursor = connection.cursor()
+
 cursor.execute("""SELECT id, symbol, name FROM stock""")
 rows = cursor.fetchall()
 
+# Create lists for cleaned symbols and removed symbols
+cleaned_symbols = [row for row in rows if '/' not in row['symbol']]
+removed_symbols = [row['symbol'] for row in rows if '/' in row['symbol']]
+
+#removed not stock simbol, like BTC/USD
+print("Removed Symbols:", removed_symbols)
+
 symbols = []
 stock_dict = {}
-for row in rows:
+for row in cleaned_symbols:
     symbol = row['symbol']
     symbols.append(symbol)
     stock_dict[symbol] = row['id']
 api = tradeapi.REST(os.getenv('ALPACA_KEY'), os.getenv('ALPACA_SECRET'), base_url='https://paper-api.alpaca.markets', api_version='v2')
 
+#for debug
+#sys.exit()
 timeframe = tradeapi.TimeFrame.Day
-start_date = pd.Timestamp('2022-11-01', tz='America/New_York').isoformat()
-end_date = pd.Timestamp('2022-12-01', tz='America/New_York').isoformat()
+start_date_tz = pd.Timestamp(start_date, tz='America/New_York').isoformat()
+end_date_tz = pd.Timestamp(end_date, tz='America/New_York').isoformat()
 chunk_size = 200
-for i in range(0, len(symbols), chunk_size):
+
+i = 0
+while i < len(symbols):
     symbol_chunk = symbols[i:i+chunk_size]
-    bars = api.get_bars(symbol_chunk, timeframe, start=start_date, end=end_date).df
-    
-    records_to_insert = []
-    for idx, row in bars.iterrows():
-        #cursor.execute("SELECT id FROM stock WHERE symbol = ?", (row['symbol'],))
-        #stock_id = cursor.fetchone()[0]
-        stock_id = stock_dict[row['symbol']]
-        records_to_insert.append((stock_id, idx.strftime('%Y-%m-%d %H:%M:%S'), row['open'], row['high'], row['low'], row['close'], row['volume']))
+    try:
+        bars = api.get_bars(symbol_chunk, timeframe, start=start_date_tz, end=end_date_tz)
+        records_to_insert = []
+        for bar in bars:
+            records_to_insert.append((stock_dict[bar.S], bar.t.date(), float(bar.o), float(bar.h), float(bar.l), float(bar.c), int(bar.v) ))
 
-    # Bulk insert into stock_price
-    cursor.executemany("""
-        INSERT INTO stock_price (stock_id, date, open, high, low, close, volume)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(stock_id, date) DO NOTHING
-        """, records_to_insert)
+        cursor.executemany("""
+            INSERT INTO stock_price (stock_id, date, open, high, low, close, volume)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(stock_id, date) DO NOTHING
+            """, records_to_insert)
 
-    # Commit the changes to the stock_price table
-    connection.commit()
-    print(f"Inserting records from {i} to {i + chunk_size}")
-    time.sleep(3)
+        connection.commit()
+        print(f"Inserting records from {i} to {i + chunk_size}")
+        i += chunk_size
+    except tradeapi.rest.APIError as e:
+        print(f"Error fetching bars for symbols {symbol_chunk}: {e}")
+        # Identify and remove the invalid symbol
+        invalid_symbol = str(e).split(':')[-1].strip()
+        if invalid_symbol in symbols:
+            print(f"Removing invalid symbol: {invalid_symbol}")
+            symbols.remove(invalid_symbol)
+        else:
+            i += chunk_size
+    time.sleep(4)
 
