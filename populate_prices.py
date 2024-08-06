@@ -3,20 +3,21 @@ import os
 import sqlite3
 import alpaca_trade_api as tradeapi
 import pandas as pd
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import time
 import sys
 
 # ----> Input correct year <------
-year=2020
+year=2024
 print("year: ", year)
 start_date = datetime(year, 1, 1)
 if year == datetime.today().year:
-    end_date = datetime.today()
+    end_date = datetime.today() - timedelta(days=1)
 else:
     end_date = datetime(year, 12, 31)
 
+print(end_date)
 # Load environment variables from the .env file
 load_dotenv()
 
@@ -56,8 +57,10 @@ while i < len(symbols):
         bars = api.get_bars(symbol_chunk, timeframe, start=start_date_tz, end=end_date_tz)
         records_to_insert = []
         for bar in bars:
-            records_to_insert.append((stock_dict[bar.S], bar.t.date(), float(bar.o), float(bar.h), float(bar.l), float(bar.c), int(bar.v) ))
-
+            try:
+                records_to_insert.append((stock_dict[bar.S], bar.t.date(), float(bar.o), float(bar.h), float(bar.l), float(bar.c), int(bar.v)))
+            except Exception as e:
+                print(f"Error processing bar data: {e}")
         cursor.executemany("""
             INSERT INTO stock_price (stock_id, date, open, high, low, close, volume)
             VALUES (?, ?, ?, ?, ?, ?, ?)
