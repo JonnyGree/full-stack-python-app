@@ -46,6 +46,21 @@ cursor.execute("""
 """)
 
 cursor.execute("""
+    ALTER TABLE stock_price
+    ADD COLUMN sm_20 REAL
+""")
+
+cursor.execute("""
+    ALTER TABLE stock_price
+    ADD COLUMN sma_50 REAL
+""")
+
+cursor.execute("""
+    ALTER TABLE stock_price
+    ADD COLUMN rsi_14 REAL
+""")
+
+cursor.execute("""
                 CREATE TABLE IF NOT EXISTS strategy(
                     id INTEGER PRIMARY KEY,
                     name TEXT NOT NULL
@@ -71,13 +86,13 @@ cursor.executemany("""
 
 connection.commit()
 
-# Query to join stock and stock_strategy on id, selecting where strategy_id = 1
-cursor.execute("""
-    SELECT stock.*
-    FROM stock
-    JOIN stock_strategy ON stock.id = stock_strategy.stock_id
-    WHERE stock_strategy.strategy_id = 1
-""")
+# # Query to join stock and stock_strategy on id, selecting where strategy_id = 1
+# cursor.execute("""
+#     SELECT stock.*
+#     FROM stock
+#     JOIN stock_strategy ON stock.id = stock_strategy.stock_id
+#     WHERE stock_strategy.strategy_id = 1
+# """)
 
     
-connection.commit()
+# connection.commit()
